@@ -45,15 +45,22 @@ jobs:
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Britive checkout + gcloud activate (GitHub OIDC -> Britive -> GCP)
+      - name: Britive checkout (GitHub OIDC -> Britive -> GCP)
         run: |
-          # `gcloudauthexec` saves SA key file + emits the activate-service-account cmd
-          # provider format is github-<audience>; must match Britive IdP allowedAudiences
-          eval "$(pybritive checkout "$GCP_PROFILE" \
+          mkdir -p ~/.gcp
+          # provider format is github-<audience>; audience must match
+          # the IdP's allowedAudiences in Britive ("britive-openloop-poc")
+          pybritive checkout "$GCP_PROFILE" \
             --federation-provider github-britive-openloop-poc \
-            --mode gcloudauthexec)"
+            --mode json > ~/.gcp/sa-key.json
+          # Sanity check + debug
+          [ -s ~/.gcp/sa-key.json ] && head -c 80 ~/.gcp/sa-key.json && echo
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.gcp/sa-key.json" >> $GITHUB_ENV
+
+      - name: Activate gcloud with checked-out SA key
+        run: |
+          gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
           gcloud config set project openloop-poc-core
-          gcloud auth list
 
       - name: Write per-run file to GCS
         run: |
@@ -90,15 +97,23 @@ jobs:
 
       - name: Britive checkout (GitHub OIDC -> Britive -> AWS)
         run: |
-          # `env-nix` emits `export VAR=value` lines; capture and re-emit for next steps
+          # env-nix emits `export VAR="value"` lines.
+          # Source them into the shell, then write clean KEY=VALUE to GITHUB_ENV.
           pybritive checkout "$AWS_PROFILE_PATH" \
             --federation-provider github-britive-openloop-poc \
             --mode env-nix > /tmp/aws.env
-          echo "::group::AWS env (values masked)"
+          set -a; source /tmp/aws.env; set +a
+          echo "::add-mask::$AWS_ACCESS_KEY_ID"
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          echo "::add-mask::$AWS_SESSION_TOKEN"
+          {
+            echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"
+            echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
+            echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN"
+          } >> $GITHUB_ENV
+          echo "::group::AWS env (vars set)"
           grep -oE '^export AWS_[A-Z_]+' /tmp/aws.env || true
           echo "::endgroup::"
-          # Translate `export VAR='value'` -> `VAR=value` for $GITHUB_ENV
-          sed -nE "s/^export (AWS_[A-Z_]+)='?([^']*)'?$/\1=\2/p" /tmp/aws.env >> $GITHUB_ENV
 
       - name: Verify auth
         run: |
