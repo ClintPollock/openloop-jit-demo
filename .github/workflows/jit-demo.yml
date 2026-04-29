@@ -48,13 +48,14 @@ jobs:
       - name: Britive checkout (GitHub OIDC -> Britive -> GCP)
         run: |
           mkdir -p ~/.gcp
-          # provider format is github-<audience>; audience must match
-          # the IdP's allowedAudiences in Britive ("britive-openloop-poc")
+          # pybritive json mode returns: {"<sa_email>": "<JSON-string-of-key>"}
+          # Need to unwrap to the inner SA key JSON for gcloud auth.
           pybritive checkout "$GCP_PROFILE" \
             --federation-provider github-britive-openloop-poc \
-            --mode json > ~/.gcp/sa-key.json
-          # Sanity check + debug
-          [ -s ~/.gcp/sa-key.json ] && head -c 80 ~/.gcp/sa-key.json && echo
+            --silent --mode json | \
+            python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); sys.stdout.write(list(d.values())[0])' \
+            > ~/.gcp/sa-key.json
+          ls -l ~/.gcp/sa-key.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.gcp/sa-key.json" >> $GITHUB_ENV
 
       - name: Activate gcloud with checked-out SA key
@@ -97,11 +98,12 @@ jobs:
 
       - name: Britive checkout (GitHub OIDC -> Britive -> AWS)
         run: |
-          # env-nix emits `export VAR="value"` lines.
-          # Source them into the shell, then write clean KEY=VALUE to GITHUB_ENV.
+          # env-nix emits `export AWS_*="value"` lines (plus a KUBECONFIG warning).
+          # Filter to only AWS_* exports, source them, then write clean KEY=VALUE to GITHUB_ENV.
           pybritive checkout "$AWS_PROFILE_PATH" \
             --federation-provider github-britive-openloop-poc \
-            --mode env-nix > /tmp/aws.env
+            --silent --mode env-nix \
+            | grep -E '^export AWS_' > /tmp/aws.env
           set -a; source /tmp/aws.env; set +a
           echo "::add-mask::$AWS_ACCESS_KEY_ID"
           echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
@@ -111,9 +113,6 @@ jobs:
             echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
             echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN"
           } >> $GITHUB_ENV
-          echo "::group::AWS env (vars set)"
-          grep -oE '^export AWS_[A-Z_]+' /tmp/aws.env || true
-          echo "::endgroup::"
 
       - name: Verify auth
         run: |
