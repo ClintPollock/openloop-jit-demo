@@ -121,7 +121,14 @@ jobs:
             python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); sys.stdout.write(list(d.values())[0])' \
             > ~/.gcp/sa-key.json
           test -s ~/.gcp/sa-key.json || { echo "::error::Empty SA key file"; exit 1; }
-          gcloud auth activate-service-account --key-file=$HOME/.gcp/sa-key.json
+          # Newly-minted SA keys take a few seconds to be usable; retry activate.
+          for i in 1 2 3 4 5; do
+            if gcloud auth activate-service-account --key-file=$HOME/.gcp/sa-key.json 2>&1; then
+              break
+            fi
+            echo "Activate attempt $i failed (likely SA key not yet propagated); waiting 5s..."
+            sleep 5
+          done
           gcloud config set project openloop-poc-core
 
       - name: Wait for IAM propagation
