@@ -108,13 +108,22 @@ jobs:
         run: |
           # `-m gcloudauth` mode returns text including a `gcloud auth activate-service-account`
           # command we extract + run. (json/gcloudauthexec modes don't work for WIF profiles.)
+          set +e
           pybritive configure update profile-aliases gcp-default "$GCP_PROFILE"
-          set +x
-          CHECKOUT_OUT=$(pybritive checkout gcp-default -m gcloudauth -P "$BRITIVE_FED_PROVIDER" 2>&1)
-          echo "$CHECKOUT_OUT" | grep '^gcloud auth activate-service-account' > /tmp/gcloud-login.sh
-          set -x
-          chmod +x /tmp/gcloud-login.sh
-          /tmp/gcloud-login.sh
+          CHECKOUT_RC=0
+          CHECKOUT_OUT=$(pybritive checkout gcp-default -m gcloudauth -P "$BRITIVE_FED_PROVIDER" 2>&1) || CHECKOUT_RC=$?
+          echo "::group::pybritive checkout (rc=$CHECKOUT_RC, sensitive content masked)"
+          echo "$CHECKOUT_OUT" | sed -E 's/(BEGIN PRIVATE KEY).*?(END PRIVATE KEY)/\1...REDACTED...\2/g' | head -30
+          echo "::endgroup::"
+          [ $CHECKOUT_RC -ne 0 ] && { echo "::error::pybritive checkout failed"; exit $CHECKOUT_RC; }
+          if echo "$CHECKOUT_OUT" | grep -q '^gcloud auth activate-service-account'; then
+            echo "$CHECKOUT_OUT" | grep '^gcloud auth activate-service-account' > /tmp/gcloud-login.sh
+            chmod +x /tmp/gcloud-login.sh
+            /tmp/gcloud-login.sh
+          else
+            echo "::error::No 'gcloud auth activate-service-account' line in pybritive output"
+            exit 1
+          fi
           gcloud config set project openloop-poc-core
           gcloud auth list
 
