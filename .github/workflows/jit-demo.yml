@@ -24,8 +24,8 @@ permissions:
 
 env:
   BRITIVE_TENANT: openloop-poc
-  GCP_PROFILE: 'Google Cloud/clintpollock27-org/openloop-poc/OpenLoop POC Core/openloop-pov-gcp-storage-admin'
-  AWS_PROFILE_PATH: 'AWS/openloop-poc (080147880424)/openloop-pov-admin'
+  GCP_PROFILE: 'Google Cloud/Google Cloud/openloop-pov-gcp-storage-admin'
+  AWS_PROFILE_PATH: 'AWS/080147880424 (openloop-poc (080147880424))/openloop-pov-admin'
   GCS_BUCKET: openloop-poc-demo-585077634997
   S3_BUCKET: openloop-poc-jit-demo-080147880424
   AWS_REGION: us-east-1
